@@ -19,7 +19,9 @@ package createworker
 import (
 	"bytes"
 	"embed"
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"path/filepath"
 	"time"
@@ -50,8 +52,8 @@ const (
 
 	scName = "keos"
 
-	clusterOperatorChart = "0.1.0"
-	clusterOperatorImage = "0.2.0-SNAPSHOT"
+	clusterOperatorChart = "0.2.0-PR109-SNAPSHOT"
+	clusterOperatorImage = "0.2.0-PR109-SNAPSHOT"
 )
 
 const machineHealthCheckWorkerNodePath = "/kind/manifests/machinehealthcheckworkernode.yaml"
@@ -450,8 +452,19 @@ func (p *Provider) installCAPXWorker(n nodes.Node, kubeconfigPath string, allowA
 		}
 
 		// Create capx secret
-		secret := strings.Split(p.capxEnvVars[0], "AZURE_CLIENT_SECRET=")[1]
-		c = "kubectl --kubeconfig " + kubeconfigPath + " -n " + p.capxName + "-system create secret generic cluster-identity-secret --from-literal=clientSecret='" + string(secret) + "'"
+		namespace := p.capxName + "-system"
+		clientSecret, _ := base64.StdEncoding.DecodeString(strings.Split(p.capxEnvVars[0], "AZURE_CLIENT_SECRET_B64=")[1])
+		clientID, _ := base64.StdEncoding.DecodeString(strings.Split(p.capxEnvVars[1], "AZURE_CLIENT_ID_B64=")[1])
+		subscriptionID, _ := base64.StdEncoding.DecodeString(strings.Split(p.capxEnvVars[2], "AZURE_SUBSCRIPTION_ID_B64=")[1])
+		tenantID, _ := base64.StdEncoding.DecodeString(strings.Split(p.capxEnvVars[3], "AZURE_TENANT_ID_B64=")[1])
+
+		c := fmt.Sprintf(
+			"kubectl --kubeconfig %s -n %s create secret generic cluster-identity-secret "+
+				"--from-literal=clientSecret='%s' "+
+				"--from-literal=clientID='%s' "+
+				"--from-literal=subscriptionID='%s' "+
+				"--from-literal=tenantID='%s'",
+			kubeconfigPath, namespace, clientSecret, clientID, subscriptionID, tenantID)
 		_, err = commons.ExecuteCommand(n, c)
 		if err != nil {
 			return errors.Wrap(err, "failed to create CAPx secret")
@@ -500,8 +513,19 @@ func (p *Provider) installCAPXLocal(n nodes.Node) error {
 		}
 
 		// Create capx secret
-		secret := strings.Split(p.capxEnvVars[0], "AZURE_CLIENT_SECRET=")[1]
-		c = "kubectl -n " + p.capxName + "-system create secret generic cluster-identity-secret --from-literal=clientSecret='" + string(secret) + "'"
+		namespace := p.capxName + "-system"
+		clientSecret, _ := base64.StdEncoding.DecodeString(strings.Split(p.capxEnvVars[0], "AZURE_CLIENT_SECRET_B64=")[1])
+		clientID, _ := base64.StdEncoding.DecodeString(strings.Split(p.capxEnvVars[1], "AZURE_CLIENT_ID_B64=")[1])
+		subscriptionID, _ := base64.StdEncoding.DecodeString(strings.Split(p.capxEnvVars[2], "AZURE_SUBSCRIPTION_ID_B64=")[1])
+		tenantID, _ := base64.StdEncoding.DecodeString(strings.Split(p.capxEnvVars[3], "AZURE_TENANT_ID_B64=")[1])
+
+		c := fmt.Sprintf(
+			"kubectl -n %s create secret generic cluster-identity-secret "+
+				"--from-literal=clientSecret='%s' "+
+				"--from-literal=clientID='%s' "+
+				"--from-literal=subscriptionID='%s' "+
+				"--from-literal=tenantID='%s'",
+			namespace, clientSecret, clientID, subscriptionID, tenantID)
 		_, err = commons.ExecuteCommand(n, c)
 		if err != nil {
 			return errors.Wrap(err, "failed to create CAPx secret")
