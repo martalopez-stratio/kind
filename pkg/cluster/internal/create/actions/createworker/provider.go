@@ -220,7 +220,7 @@ func (p *Provider) getAllowCAPXEgressIMDSGNetPol() (string, error) {
 	return string(allowEgressIMDSgnpContent), nil
 }
 
-func deployClusterOperator(n nodes.Node, keosCluster commons.KeosCluster, clusterCredentials commons.ClusterCredentials, keosRegistry keosRegistry, kubeconfigPath string, firstInstallation bool) error {
+func (p *Provider) deployClusterOperator(n nodes.Node, keosCluster commons.KeosCluster, clusterCredentials commons.ClusterCredentials, keosRegistry keosRegistry, kubeconfigPath string, firstInstallation bool) error {
 	var c string
 	var err error
 	var helmRepository helmRepository
@@ -272,6 +272,7 @@ func deployClusterOperator(n nodes.Node, keosCluster commons.KeosCluster, cluste
 				return errors.Wrap(err, "failed to add helm repository: "+helmRepository.url)
 			}
 		}
+
 		if firstInstallation {
 			// Pull cluster-operator helm chart
 			c = "helm pull cluster-operator --repo " + helmRepository.url +
@@ -303,16 +304,27 @@ func deployClusterOperator(n nodes.Node, keosCluster commons.KeosCluster, cluste
 	// Deploy cluster-operator chart
 	c = "helm install --wait cluster-operator /stratio/helm/cluster-operator" +
 		" --namespace kube-system" +
+		" --set provider=" + keosCluster.Spec.InfraProvider +
+		" --set app.containers.controllerManager.image.tag=" + clusterOperatorImage +
 		" --set app.containers.controllerManager.image.registry=" + keosRegistry.url +
-		" --set app.containers.controllerManager.image.repository=stratio/cluster-operator" +
-		" --set app.containers.controllerManager.image.tag=" + clusterOperatorImage
+		" --set app.containers.controllerManager.image.repository=stratio/cluster-operator"
+	if keosCluster.Spec.InfraProvider == "azure" {
+		c += " --set secrets.azure.clientIDBase64=" + strings.Split(p.capxEnvVars[1], "AZURE_CLIENT_ID_B64=")[1] +
+			" --set secrets.azure.clientSecretBase64=" + strings.Split(p.capxEnvVars[0], "AZURE_CLIENT_SECRET_B64=")[1] +
+			" --set secrets.azure.subscriptionIDBase64=" + strings.Split(p.capxEnvVars[2], "AZURE_SUBSCRIPTION_ID_B64=")[1] +
+			" --set secrets.azure.tenantIDBase64=" + strings.Split(p.capxEnvVars[3], "AZURE_TENANT_ID_B64=")[1]
+	} else if keosCluster.Spec.InfraProvider == "gcp" {
+		c += " --set secrets.common.credentialsBase64=" + strings.Split(p.capxEnvVars[0], "GCP_B64ENCODED_CREDENTIALS=")[1]
+	} else if keosCluster.Spec.InfraProvider == "aws" {
+		c += " --set secrets.common.credentialsBase64=" + strings.Split(p.capxEnvVars[3], "AWS_B64ENCODED_CREDENTIALS=")[1]
+	}
 	if kubeconfigPath == "" {
-		c = c +
-			" --set app.containers.controllerManager.imagePullSecrets.enabled=true" +
+		c += " --set app.containers.controllerManager.imagePullSecrets.enabled=true" +
 			" --set app.containers.controllerManager.imagePullSecrets.name=regcred"
 	} else {
-		c = c + " --set app.replicas=2" + " --kubeconfig " + kubeconfigPath
+		c += " --set app.replicas=2" + " --kubeconfig " + kubeconfigPath
 	}
+
 	_, err = commons.ExecuteCommand(n, c)
 	if err != nil {
 		return errors.Wrap(err, "failed to deploy cluster-operator chart")
@@ -454,17 +466,11 @@ func (p *Provider) installCAPXWorker(n nodes.Node, kubeconfigPath string, allowA
 		// Create capx secret
 		namespace := p.capxName + "-system"
 		clientSecret, _ := base64.StdEncoding.DecodeString(strings.Split(p.capxEnvVars[0], "AZURE_CLIENT_SECRET_B64=")[1])
-		clientID, _ := base64.StdEncoding.DecodeString(strings.Split(p.capxEnvVars[1], "AZURE_CLIENT_ID_B64=")[1])
-		subscriptionID, _ := base64.StdEncoding.DecodeString(strings.Split(p.capxEnvVars[2], "AZURE_SUBSCRIPTION_ID_B64=")[1])
-		tenantID, _ := base64.StdEncoding.DecodeString(strings.Split(p.capxEnvVars[3], "AZURE_TENANT_ID_B64=")[1])
 
 		c := fmt.Sprintf(
 			"kubectl --kubeconfig %s -n %s create secret generic cluster-identity-secret "+
-				"--from-literal=clientSecret='%s' "+
-				"--from-literal=clientID='%s' "+
-				"--from-literal=subscriptionID='%s' "+
-				"--from-literal=tenantID='%s'",
-			kubeconfigPath, namespace, clientSecret, clientID, subscriptionID, tenantID)
+				"--from-literal=clientSecret='%s'",
+			kubeconfigPath, namespace, clientSecret)
 		_, err = commons.ExecuteCommand(n, c)
 		if err != nil {
 			return errors.Wrap(err, "failed to create CAPx secret")
@@ -515,17 +521,11 @@ func (p *Provider) installCAPXLocal(n nodes.Node) error {
 		// Create capx secret
 		namespace := p.capxName + "-system"
 		clientSecret, _ := base64.StdEncoding.DecodeString(strings.Split(p.capxEnvVars[0], "AZURE_CLIENT_SECRET_B64=")[1])
-		clientID, _ := base64.StdEncoding.DecodeString(strings.Split(p.capxEnvVars[1], "AZURE_CLIENT_ID_B64=")[1])
-		subscriptionID, _ := base64.StdEncoding.DecodeString(strings.Split(p.capxEnvVars[2], "AZURE_SUBSCRIPTION_ID_B64=")[1])
-		tenantID, _ := base64.StdEncoding.DecodeString(strings.Split(p.capxEnvVars[3], "AZURE_TENANT_ID_B64=")[1])
 
 		c := fmt.Sprintf(
 			"kubectl -n %s create secret generic cluster-identity-secret "+
-				"--from-literal=clientSecret='%s' "+
-				"--from-literal=clientID='%s' "+
-				"--from-literal=subscriptionID='%s' "+
-				"--from-literal=tenantID='%s'",
-			namespace, clientSecret, clientID, subscriptionID, tenantID)
+				"--from-literal=clientSecret='%s' ",
+			namespace, clientSecret)
 		_, err = commons.ExecuteCommand(n, c)
 		if err != nil {
 			return errors.Wrap(err, "failed to create CAPx secret")
