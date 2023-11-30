@@ -309,28 +309,23 @@ func (b *AzureBuilder) getOverrideVars(p ProviderParams, networks commons.Networ
 
 func (b *AzureBuilder) postInstallPhase(n nodes.Node, k string) error {
 	if b.capxManaged {
-		c := "kubectl --kubeconfig " + k + " patch deploy -n kube-system coredns -p '{\"spec\": {\"template\": {\"metadata\": {\"annotations\": {\"" + postInstallAnnotation + "\": \"tmp\"}}}}}'"
-		_, err := commons.ExecuteCommand(n, c)
+		err := patchDeploy(n, k, "kube-system", "coredns", "{\"spec\": {\"template\": {\"metadata\": {\"annotations\": {\""+postInstallAnnotation+"\": \"tmp\"}}}}}")
 		if err != nil {
-			return errors.Wrap(err, "failed to patch coredns annotation")
+			return errors.Wrap(err, "failed to add podAnnotation to coredns")
 		}
-		c = "kubectl --kubeconfig " + k + " patch deploy -n tigera-operator tigera-operator -p '{\"spec\": {\"template\": {\"metadata\": {\"annotations\": {\"" + postInstallAnnotation + "\": \"var-lib-calico\"}}}}}'"
-		_, err = commons.ExecuteCommand(n, c)
+		err = patchDeploy(n, k, "tigera-operator", "tigera-operator", "{\"spec\": {\"template\": {\"metadata\": {\"annotations\": {\""+postInstallAnnotation+"\": \"var-lib-calico\"}}}}}")
 		if err != nil {
-			return errors.Wrap(err, "failed to patch tigera-operator annotation")
+			return errors.Wrap(err, "failed to add podAnnotation to tigera-operator")
 		}
-		c = "kubectl --kubeconfig " + k + " patch deploy -n kube-system metrics-server  -p '{\"spec\": {\"template\": {\"metadata\": {\"annotations\": {\"" + postInstallAnnotation + "\": \"tmp-dir\"}}}}}'"
-		_, err = commons.ExecuteCommand(n, c)
+		err = patchDeploy(n, k, "kube-system", "metrics-server", "{\"spec\": {\"template\": {\"metadata\": {\"annotations\": {\""+postInstallAnnotation+"\": \"tmp-dir\"}}}}}")
 		if err != nil {
-			return errors.Wrap(err, "failed to patch metrics-server annotation")
+			return errors.Wrap(err, "failed to add podAnnotation to metrics-server")
 		}
 	} else {
-		c := "kubectl --kubeconfig " + k + " patch deploy -n kube-system  cloud-controller-manager -p '{\"spec\": {\"template\": {\"metadata\": {\"annotations\": {\"" + postInstallAnnotation + "\": \"etc-kubernetes,ssl-mount,msi\"}}}}}'"
-		_, err := commons.ExecuteCommand(n, c)
+		err := patchDeploy(n, k, "kube-system", "cloud-controller-manager", "{\"spec\": {\"template\": {\"metadata\": {\"annotations\": {\""+postInstallAnnotation+"\": \"etc-kubernetes,ssl-mount,msi\"}}}}}")
 		if err != nil {
-			return errors.Wrap(err, "failed to patch coredns annotation")
+			return errors.Wrap(err, "failed to add podAnnotation to cloud-controller-manager")
 		}
-
 	}
 	return nil
 }
