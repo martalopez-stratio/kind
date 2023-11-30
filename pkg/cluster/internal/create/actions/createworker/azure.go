@@ -146,7 +146,8 @@ func (b *AzureBuilder) installCSI(n nodes.Node, k string) error {
 	// Deploy disk CSI driver
 	c = "helm install azuredisk-csi-driver /stratio/helm/azuredisk-csi-driver " +
 		" --kubeconfig " + k +
-		" --namespace " + b.csiNamespace
+		" --namespace " + b.csiNamespace +
+		" --set controller.podAnnotations={\"" + postInstallAnnotation + "\":" + " \"socket-dir,azure-cred\"}"
 	_, err = commons.ExecuteCommand(n, c)
 	if err != nil {
 		return errors.Wrap(err, "failed to deploy Azure Disk CSI driver Helm Chart")
@@ -155,7 +156,8 @@ func (b *AzureBuilder) installCSI(n nodes.Node, k string) error {
 	// Deploy file CSI driver
 	c = "helm install azurefile-csi-driver /stratio/helm/azurefile-csi-driver " +
 		" --kubeconfig " + k +
-		" --namespace " + b.csiNamespace
+		" --namespace " + b.csiNamespace +
+		" --set controller.podAnnotations={\"" + postInstallAnnotation + "\":" + " \"socket-dir,azure-cred\"}"
 	_, err = commons.ExecuteCommand(n, c)
 	if err != nil {
 		return errors.Wrap(err, "failed to deploy Azure File CSI driver Helm Chart")
@@ -303,4 +305,32 @@ func (b *AzureBuilder) getOverrideVars(p ProviderParams, networks commons.Networ
 		overrideVars = addOverrideVar("ingress-nginx.yaml", azureInternalIngress, overrideVars)
 	}
 	return overrideVars, nil
+}
+
+func (b *AzureBuilder) postInstallPhase(n nodes.Node, k string) error {
+	if b.capxManaged {
+		c := "kubectl --kubeconfig " + k + " patch deploy -n kube-system coredns -p '{\"spec\": {\"template\": {\"metadata\": {\"annotations\": {\"" + postInstallAnnotation + "\": \"tmp\"}}}}}'"
+		_, err := commons.ExecuteCommand(n, c)
+		if err != nil {
+			return errors.Wrap(err, "failed to patch coredns annotation")
+		}
+		c = "kubectl --kubeconfig " + k + " patch deploy -n tigera-operator tigera-operator -p '{\"spec\": {\"template\": {\"metadata\": {\"annotations\": {\"" + postInstallAnnotation + "\": \"var-lib-calico\"}}}}}'"
+		_, err = commons.ExecuteCommand(n, c)
+		if err != nil {
+			return errors.Wrap(err, "failed to patch tigera-operator annotation")
+		}
+		c = "kubectl --kubeconfig " + k + " patch deploy -n kube-system metrics-server  -p '{\"spec\": {\"template\": {\"metadata\": {\"annotations\": {\"" + postInstallAnnotation + "\": \"tmp-dir\"}}}}}'"
+		_, err = commons.ExecuteCommand(n, c)
+		if err != nil {
+			return errors.Wrap(err, "failed to patch metrics-server annotation")
+		}
+	} else {
+		c := "kubectl --kubeconfig " + k + " patch deploy -n kube-system  cloud-controller-manager -p '{\"spec\": {\"template\": {\"metadata\": {\"annotations\": {\"" + postInstallAnnotation + "\": \"etc-kubernetes,ssl-mount,msi\"}}}}}'"
+		_, err := commons.ExecuteCommand(n, c)
+		if err != nil {
+			return errors.Wrap(err, "failed to patch coredns annotation")
+		}
+
+	}
+	return nil
 }
