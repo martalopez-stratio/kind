@@ -255,7 +255,7 @@ func (a *action) Execute(ctx *actions.ActionContext) error {
 	defer ctx.Status.End(true) // End installing keos cluster operator
 
 	if !a.avoidCreation {
-		if a.keosCluster.Spec.InfraProvider == "aws" && a.keosCluster.Spec.Security.AWS.CreateIAM {
+		if a.keosCluster.Spec.InfraProvider == "aws" && !a.keosCluster.Spec.Security.AWS.CreateIAM {
 			ctx.Status.Start("[CAPA] Ensuring IAM security 👮")
 			defer ctx.Status.End(false)
 
